@@ -239,12 +239,12 @@ def main(counts, method='SparCC', **kwargs):
     cor_list = []  # list of cor matrices from different random fractions
     var_list = []  # list of cov matrices from different random fractions
     oprint   = kwargs.pop('oprint',True)
-    iter     = kwargs.pop('iter',20)  # number of iterations 
+    n_iter     = kwargs.pop('iter',20)  # number of iterations 
     norm     = kwargs.pop('norm','dirichlet')
     log      = kwargs.pop('log','True')
     th       = kwargs.setdefault('th',0.1)   # exclusion threshold for iterative sparse algo
     if method in ['sparcc', 'clr']: 
-        for i in range(iter):
+        for i in range(n_iter):
             if oprint: print '\tRunning iteration' + str(i)
             fracs = to_fractions(counts, method=norm)
             v_sparse, cor_sparse, cov_sparse = basis_corr(fracs, method=method, **kwargs)
@@ -256,7 +256,9 @@ def main(counts, method='SparCC', **kwargs):
         x,y     = np.meshgrid(var_med,var_med)
         cov_med = cor_med * x**0.5 * y**0.5
     elif method in ['pearson', 'kendall', 'spearman']:
-        for i in range(iter):
+	n = counts.shape[1]
+	cor_array = np.zeros((n_iter, n, n))
+        for i in range(n_iter):
             if oprint: print '\tRunning iteration ' + str(i)
             fracs = to_fractions(counts, method=norm)
             if log:
@@ -264,10 +266,9 @@ def main(counts, method='SparCC', **kwargs):
             else:
                 x = fracs
             cor_mat, pval = correlation(x, method, axis=0)
-            cor_list.append(cor_mat)
-        cor_array   = np.array(cor_list)
+            cor_array[i,:,:] = cor_mat
         cor_med = np.median(cor_array, axis=0) #median correlation
-        cov_med = None 
+        cov_med = None
     return cor_med, cov_med 
         
 

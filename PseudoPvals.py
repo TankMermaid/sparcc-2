@@ -97,7 +97,7 @@ if __name__ == '__main__':
               'The total number of simulated sets is the third.\n'
               '\n'
               'Usage:   python PseudoPvals.py real_cor_file perm_template num_simulations [options]\n'
-              'Example: python PseudoPvals.py example/basis_corr/cor_mat_sparcc.out example/pvals/perm_cor_#.txt 5 -o pvals.txt -t one_sided')
+              'Example: python PseudoPvals.py example/basis_corr/cor_sparcc.out example/pvals/perm_cor_#.txt 5 -o pvals.txt -t one_sided')
     parser = OptionParser(usage)
     parser.add_option("-t", "--type", dest="type", default='two_sided', type = 'str',
                       help="Type of p-values to computed.  oned-sided | two-sided (default).")

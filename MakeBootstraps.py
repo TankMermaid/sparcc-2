@@ -6,6 +6,7 @@
 Script for making simulated datasets used to get pseudo p-values.
 '''
 import os
+from analysis_methods import permute_w_replacement
 from io_methods import read_txt, write_txt
     
 def kwargs_callback(option, opt, value, parser,**kwargs):
@@ -73,7 +74,7 @@ if __name__ == '__main__':
               'Simulated datasets are either written out as txt files. \n'
               '\n'
               'Usage:   python MakeBootstraps.py counts_file [options]\n'
-              'Example: python MakeBootstraps.py example/fake_data.txt -n 5 -t counts.filtered.permutation_#.txt -p example/pvals/')
+              'Example: python MakeBootstraps.py example/fake_data.txt -n 5 -t permutation_#.txt -p example/pvals/')
     parser = OptionParser(usage)
     parser.add_option("-n", dest="n", default=100, type = 'int',
                       help="Number of simulated datasets to create (100 default).")
