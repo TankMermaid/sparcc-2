@@ -1,78 +1,114 @@
-#!/usr/bin/env python
-
 '''
-Created on May 31, 2011
+Created on Apr 8, 2013
 
 @author: jonathanfriedman
+
+
 '''
-import cPickle as pickle
 import numpy as np
+from pandas import DataFrame as DF
+from io_methods import read_txt, write_txt
 
-from copy import deepcopy
-from itertools import combinations
-from lib.MatrixDictionary import MatrixDictionary as MD
+def compare2sided(perm,real): 
+    return np.abs(perm) >= np.abs(real)
 
-def kwargs_callback(option, opt, value, parser,**kwargs):
-    d = kwargs['d']
-    d[option.dest] = value
-    return d
+def compare1sided(perm,real): 
+    inds_abs = compare2sided(perm,real)
+    inds_sign = np.sign(perm) == np.sign(real)
+    return inds_abs & inds_sign
 
-def Run(cor_file, base_file, n, **kwargs):   
-   ## load  'real' correlation
-   temp = MD()
-   cor  = temp.from_file(cor_file)
-   ## load shuffled correlations  
-   cors_sim  = []
-   for i in xrange(n):
-       file =  base_file + '_' + str(i) + '.txt'
-       temp = MD()
-       c    = temp.from_file(file)
-       cors_sim.append(c)
-   ## determine test type
-   test_type = kwargs.get('type','two_sided')
-   if test_type not in ('one_sided','two_sided'): raise ValueError('Unkown test type %s' %test_type)
-   ## compute p-vals
-   p_vals    = deepcopy(cor)
-   for o1,o2 in combinations(p_vals.row_labels(), 2):
-       vals   = np.array([c[o1][o2] for c in cors_sim])
-       c_real = cor[o1][o2]
-       if test_type == 'two_sided':
-           n_sig = len(np.where(np.abs(vals)>np.abs(c_real))[0]) 
-       elif test_type == 'one_sided':
-           if c_real >= 0:  n_sig = len(np.where(vals>c_real)[0])
-           else:            n_sig = len(np.where(vals<c_real)[0])
-       p = 1.*n_sig/n
-       p_vals[o1][o2] = p
-       p_vals[o2][o1] = p
-   ## write p-vals    
-   out_file = kwargs.get('out_file', cor_file +'.pvals')
-   p_vals.writetxt(out_file)    
-   
-   
+def get_pvalues(cor, perm_template, nperm, test_type='two_sided', 
+                iprint=0):
+    '''
+    Compute pseudo p-vals from a set correlations obtained from permuted data' 
+    Pseudo p-vals are the percentage of times a correlation at least 
+    as extreme as the "real" one was observed in simulated datasets.
+    
+    Files containing the permuted correlations should be named with a 
+    consistent template, and these file names cannot contain any "#" characters.
+
+    Parameters
+    ----------
+    cor : DataFrame
+        Inferred correlations whose p-values are to be computed.
+    perm_template : str
+        The template used for naming the correlation files of the 
+        permuted data. The iteration number is indicated with a "#".
+        For example: 'permuted/cor.sparcc.permuted_#.txt'
+    nperm : int
+        Number of permutations available.
+    test_type : 'two_sided' (default) | 'one_sided'
+        two-sided  = considering only the correlation magnitude. 
+        one-sided  = accounting for the sign of correlations.
+    iprint : int (default = 0)
+        The interval at which iteration number is printed out.
+        If iprint<=0 no printouts are made.
+    
+    Returns
+    -------
+    p_vals: frame
+        Computed pseudo p-values.
+    '''
+    if test_type == 'two_sided': 
+        cmpfun = compare2sided
+    elif test_type == 'one_sided':
+        cmpfun = compare1sided
+    else:
+        raise ValueError, 'unsupported test type "%s"' %test_type
+    n_sig = DF(np.zeros(cor.shape), 
+               index=cor.index,
+               columns=cor.columns)
+    for i in xrange(nperm):
+        if iprint>0:
+            if not i%iprint: print i 
+        permfile = perm_template.replace('#', '%d'%i)
+        cor_perm = read_txt(permfile).values
+        n_sig[cmpfun(cor_perm, cor)] += 1  
+    p_vals = 1.*n_sig/nperm
+    p_vals.values[np.diag_indices_from(p_vals.values)] = 1 
+    return p_vals
+    
+
+def main(cor_file, perm_template, nperm, test_type='two_sided', outfile=None):
+    '''
+    Compute pseudo p-vals from a set correlations obtained from permuted data' 
+    Pseudo p-vals are the percentage of times a correlation at least 
+    as extreme as the "real" one was observed in simulated datasets.
+    
+    Files containing the permuted correlations should be named with a 
+    consistent template, and these file names cannot contain any "#" characters.
+    '''
+    cor = read_txt(cor_file)    
+    p_vals = get_pvalues(cor, perm_template, nperm, test_type)
+    if outfile is None:
+        outfile = cor_file +'.nperm_%d.pvals' %nperm
+    write_txt(p_vals, outfile)
+    
+
 if __name__ == '__main__':
     ## parse input arguments
     from optparse import OptionParser
-    kwargs = {}
-    usage  = ('Compute pseudo p-vals from a set correlations obtained from shuffled data.\n' 
+    usage  = ('Compute pseudo p-vals from a set correlations obtained from permuted data.\n' 
               'Pseudo p-vals are the percentage of times a correlation at least as extreme as the "real" one was observed in simulated datasets. \n'
               'p-values can be either two-sided (considering only the correlation magnitude) or one-sided (accounting for the sign of correlations).\n'
-              'Files containing the simulated correlations should be named [prefix]_[num].txt. The naming prefix is the second input argument, and the total number of simulated sets is the third.\n'
+              'Files containing the permuted correlations should be named with a consistent template, where only the iteration number changes.\n' 
+              'The permutation naming template is the second input argument with the iteration number replaced with a "#" character.\n' 
+              'The template cannot contain additional "#" characters.\n' 
+              'The total number of simulated sets is the third.\n'
               '\n'
-              'Usage:   python PseudoPvals.py real_cor_file sim_cor_file_prefix num_simulations [options]\n'
-              'Example: python PseudoPvals.py example/basis_corr/cor_mat_sparcc.out example/pvals/sim_cor 5 -o pvals.txt -t one_sided')
+              'Usage:   python PseudoPvals.py real_cor_file perm_template num_simulations [options]\n'
+              'Example: python PseudoPvals.py example/basis_corr/cor_mat_sparcc.out example/pvals/perm_cor_#.txt 5 -o pvals.txt -t one_sided')
     parser = OptionParser(usage)
-    parser.add_option("-t", "--type", dest="type", type = 'str',
-                      action="callback", callback= kwargs_callback, callback_kwargs = {'d':kwargs}, 
+    parser.add_option("-t", "--type", dest="type", default='two_sided', type = 'str',
                       help="Type of p-values to computed.  oned-sided | two-sided (default).")
-    parser.add_option("-o", "--out_file", dest="out_file", type = 'str',
-                      action="callback", callback= kwargs_callback, callback_kwargs = {'d':kwargs}, 
+    parser.add_option("-o", "--outfile", dest="outfile", default=None, type = 'str',
                       help="Name of file to which p-values will be written.")
     (options, args) = parser.parse_args()
     real_cor_file   = args[0]
-    sim_cor_file    = args[1]
+    perm_template   = args[1]
     n               = int(args[2])
+    test_type = options.type
+    outfile = options.outfile
      
-    ## write sample distance
-    Run(real_cor_file, sim_cor_file, n, **kwargs)   
-   
+    main(real_cor_file, perm_template, n, test_type, outfile)
     
